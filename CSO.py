@@ -2,6 +2,8 @@ import numpy as np
 import random
 import math
 from itertools import combinations
+import pandas as pd
+from itables import init_notebook_mode, show
 
 class Cat:
     def __init__(self, SMP, SPC, CDC, SRD, position, velocity):
@@ -14,19 +16,22 @@ class Cat:
         self.mode = None         # Modo del gato: 'seeking' o 'tracing'
         self.fs = None           # Valor de fitness (Output funcion objetivo)
 
-def fs(cat):
+def fs(position):
     # Posicion de cada dimension
-    x = cat.position[0]
-    y = cat.position[1]
+    x = position[0]
+    y = position[1]
     # Implementar la función de fitness aquí
-    # Implementar la función de fitness
     result = (-20 * math.exp(-0.2 * math.sqrt(0.5 * (x**2 + y**2))) -
             math.exp(0.5 * (math.cos(2 * math.pi * x) + math.cos(2 * math.pi * y))) +
             math.exp(1) + 20)
-    
+
     return result
 
-def set_modes(cats, N, MR):
+def set_modes(cats, MR):
+
+    # Obtener N de gatos
+    N = len(cats)
+
     # Calcular cuántas veces imprimir "tracing"
     tracing_count = int(N * MR)
 
@@ -43,7 +48,7 @@ def set_modes(cats, N, MR):
     # Asignar un modo a cada gato basado en su índice
     for index, cat in enumerate(cats):
         cat.mode = modes[index % len(modes)]
-    
+
     return cats
 
 def seeking_algorithm(cat):
@@ -59,7 +64,7 @@ def seeking_algorithm(cat):
     candidate_positions = []
     used_dims_sets = set()
     all_combinations = list(combinations(range(dim), CDC))
-    
+
     # Paso 1: Crear SMP copias de la posición actual
     for i in range(SMP):
         if SPC and i == 0:
@@ -87,7 +92,6 @@ def seeking_algorithm(cat):
                 new_position[d] *= (1-SRD)
 
             candidate_positions.append(new_position)
-    
     # Paso 3: Calcular la aptitud (fitness) de cada punto candidato
     fitness_values = np.array([fs(pos) for pos in candidate_positions])
 
@@ -111,18 +115,18 @@ def seeking_algorithm(cat):
 
 
 def tracing_algorithm(cat, best_cat):
-   
+
     cat_position = cat.position
     cat_velocity = cat.velocity
     newCat_velocity = []
     # rd = [0.3407, 0.8949] CASO VISTO EN CLASE
     best_position = best_cat.position
     c1 = 1
-    
+
     # Paso 1: Actualizar la velocidad en cada dimensión
     for d in range(len(cat_position)):
         r1 = np.random.rand()  # Generar un valor aleatorio en el rango [0, 1]
-        
+
         # Ecuación (2): Actualización de velocidad
         newCat_velocity.append(cat_velocity[d] + r1 * c1 * (best_position[d] - cat_position[d]))
 
@@ -130,12 +134,52 @@ def tracing_algorithm(cat, best_cat):
     new_position = np.add(newCat_velocity, cat_position).tolist()  # Suma los elementos correspondientes
 
     return new_position, newCat_velocity
-   
 
-def cso_algorithm(cats, N, MR, max_iterations, mapSize):
+def print_data(cats):
+
+    data = {
+        'Agent': [],
+        'SMP': [],
+        'SPC': [],
+        'CDC': [],
+        'SRD': [],
+        'Position': [],
+        'Velocity': [],
+        'Mode': [],
+        'Fs': [],
+    }
+
+    # Asegúrate de que las listas tengan la misma longitud
+    for i in range(len(cats)):
+        # Agregar datos a cada lista en el diccionario
+        data['Agent'].append(f"C{i+1}")
+        data['SMP'].append(cats[i].SMP)
+        data['SPC'].append(cats[i].SPC)
+        data['CDC'].append(cats[i].CDC)
+        data['SRD'].append(cats[i].SRD)
+        data['Position'].append(cats[i].position)
+        data['Velocity'].append(cats[i].velocity)
+        data['Mode'].append(cats[i].mode)
+        data['Fs'].append(cats[i].fs)
+
+    # Inicializar itables para su uso en Jupyter Notebook
+    init_notebook_mode()
+
+    # Convertir el diccionario en un DataFrame de pandas
+    df = pd.DataFrame(data)
+
+    # Mostrar la tabla utilizando itables
+    show(df)
+
+
+
+def cso_algorithm(cats, MR, max_iterations):
+
+    # Obtener N de gatos
+    N = len(cats)
 
     # Step 2: Asignar modos
-    cats = set_modes(cats, N, MR)
+    cats = set_modes(cats, MR)
 
     best_cat = None
     best_fitness = float('inf')
@@ -144,10 +188,14 @@ def cso_algorithm(cats, N, MR, max_iterations, mapSize):
     for iteration in range(max_iterations):
         # Step 3: Evaluar valores de fitness
         for cat in cats:
-            cat.fs = fs(cat)
+            cat.fs = fs(cat.position)
             if cat.fs < best_fitness: # Aqui se define el objetivo del problema (<:Min & >:Max)
                 best_fitness = cat.fs
                 best_cat = cat
+
+        # Imprimir Tabla en cada iteracion
+        print(f"-- ITERACION {iteration+1} --")
+        print_data(cats)
 
         # Step 4: Mover los gatos según su modo
         for cat in cats:
@@ -156,24 +204,24 @@ def cso_algorithm(cats, N, MR, max_iterations, mapSize):
                 cat.position = seeking_algorithm(cat)
             else:  # tracing mode
                 # Lógica de movimiento para tracing mode
-                cat.position = tracing_algorithm(cat, best_cat)
+                cat.position, cat.velocity = tracing_algorithm(cat, best_cat)
 
         # Step 5: Re-pick gatos para modos
-        cats = set_modes(cats, N, MR)
+        cats = set_modes(cats, MR)
 
         # Step 6: Verificar condición de terminación
         if iteration >= max_iterations - 1:  # Por ejemplo, terminar después de un número fijo de iteraciones
-            break
+            print("--- TABLA CON SOLUCION OPTIMA ---")
+            print_data(cats)
 
     return best_cat.position, best_fitness
 
 # Parámetros del algoritmo
 MR = 1/6  # Proporción de gatos en tracing mode
-max_iterations = 100  # Número máximo de iteraciones
+max_iterations = 10  # Número máximo de iteraciones (Se deberan de hacer 10,000 iteraciones en el examen)
 mapSize = 25
 
 # Step 1: Crear N gatos
-N = 6 # Numero de gatos en el modelo
 cats = []
 cats.append(Cat(3, 1, 1, 0.01357, [10.0482, 1.01839], [0.0248, 0.0809]))    # C1
 cats.append(Cat(4, 0, 2, 0.01525, [21.1237, -2.86781], [0.2491, 0.7404]))   # C2
@@ -183,7 +231,7 @@ cats.append(Cat(2, 1, 1, 0.00741, [-8.48734, -15.3779], [0.3579, 0.1792]))  # C5
 cats.append(Cat(4, 0, 2, 0.01527, [23.1321, -4.37554], [0.5564, 0.3533]))   # C6
 
 # Ejecutar el algoritmo
-best_position, best_fitness = cso_algorithm(cats, N, MR, max_iterations, mapSize)
+best_position, best_fitness = cso_algorithm(cats, MR, max_iterations)
 
 # Imprimir los resultados
 print("Mejor posición encontrada:", best_position)
